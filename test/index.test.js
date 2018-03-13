@@ -10,6 +10,40 @@ describe.only('WebRTC Transport', () => {
   before(() => process.on('unhandledRejection', err => console.error('Unhandled', err)));
   after(() => process.removeAllListeners('unhandledRejection'));
 
+  it('got timeout', async () => {
+    let node1 = new Node();
+    let node2 = new Node();
+
+    node1.addFinder(new MemoryFinder());
+    node2.addFinder(new MemoryFinder());
+
+    node1.addDialer(new WebRTCDialer({ wrtc, timeout: 500 }));
+    node2.addDialer(new WebRTCDialer({ wrtc, timeout: 500 }));
+
+    node1.addListener(new WebRTCListener({ wrtc }));
+    node2.addListener(new WebRTCListener({ wrtc }));
+
+    node1.addDialer(new MemoryDialer());
+    node2.addDialer(new MemoryDialer());
+
+    try {
+      await node1.start();
+      await node2.start();
+
+      try {
+        await node2.connect(`wrtc:${node1.identity.address}`);
+        throw new Error('Oops');
+      } catch (err) {
+        if (err.message !== 'WebRTC Dial timeout') {
+          throw err;
+        }
+      }
+    } finally {
+      await node1.stop();
+      await node2.stop();
+    }
+  });
+
   it('send to other peer', async () => {
     let gw1 = new Node();
     let gw2 = new Node();
