@@ -1,6 +1,6 @@
 {
   "name": "@twlv/transport-webrtc",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "twlv webrtc dialer and listener",
   "main": "index.js",
   "repository": {
@@ -15,7 +15,7 @@
   "author": "Ganesha <reekoheek@gmail.com> (http://sagara.id)",
   "license": "MIT",
   "devDependencies": {
-    "@twlv/core": "^0.2.4",
+    "@twlv/core": "^0.2.5",
     "babel-eslint": "^8.2.2",
     "eslint": "^4.18.2",
     "eslint-config-standard": "^11.0.0",
