@@ -1,5 +1,6 @@
 const { EventEmitter } = require('events');
 const Socket = require('simple-peer');
+const debug = require('debug')('twlv:transport-webrtc:listener');
 
 class WebRTCListener extends EventEmitter {
   constructor ({ wrtc } = {}) {
@@ -33,7 +34,6 @@ class WebRTCListener extends EventEmitter {
 
     let address = message.from;
     let signal = JSON.parse(message.payload);
-    // console.log('L', signal);
 
     if (signal.type !== 'offer') {
       let socket = this._sockets.find(socket => socket.address === address);
@@ -56,7 +56,7 @@ class WebRTCListener extends EventEmitter {
     });
 
     socket.on('error', err => {
-      console.error('WebRTCListener caught', err);
+      debug(`WebRTCListener caught %s`, err.stack);
     });
 
     socket.on('connect', () => {
@@ -68,6 +68,14 @@ class WebRTCListener extends EventEmitter {
       socket.removeAllListeners();
 
       this.emit('socket', socket);
+    });
+
+    socket.on('close', () => {
+      let index = this._sockets.indexOf(socket);
+      if (index !== -1) {
+        this._sockets.splice(index, 1);
+      }
+      socket.removeAllListeners();
     });
 
     this._sockets.push(socket);

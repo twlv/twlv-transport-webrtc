@@ -1,6 +1,6 @@
 {
   "name": "@twlv/transport-webrtc",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "twlv webrtc dialer and listener",
   "main": "index.js",
   "repository": {
@@ -10,7 +10,8 @@
   "scripts": {
     "lint": "eslint .",
     "test": "mocha test/**",
-    "coverage": "nyc --reporter=lcov npm test"
+    "coverage": "nyc --reporter=lcov npm test",
+    "all": "npm run lint && npm run coverage"
   },
   "author": "Ganesha <reekoheek@gmail.com> (http://sagara.id)",
   "license": "MIT",
@@ -29,6 +30,7 @@
     "wrtc": "0.0.67"
   },
   "dependencies": {
+    "debug": "^3.1.0",
     "simple-peer": "^9.0.0"
   }
 }
