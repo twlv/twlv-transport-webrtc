@@ -2,15 +2,20 @@ const debug = require('debug')('twlv:transport-webrtc:dialer');
 
 const Socket = require('simple-peer');
 class WebRTCDialer {
-  constructor ({ wrtc, timeout = 30000 } = {}) {
+  constructor ({ wrtc, signalers = [], timeout = 5000 } = {}) {
     this.proto = 'wrtc';
 
     this.timeout = timeout;
     this.wrtc = wrtc;
+    this.signalers = signalers;
   }
 
   dial (url, node) {
     let address = url.split(':').pop();
+
+    if (!this.signalers || !this.signalers.length) {
+      throw new Error('WebRTCDialer: Cannot dial without signaler');
+    }
 
     return new Promise((resolve, reject) => {
       let socket = new Socket({ initiator: true, wrtc: this.wrtc, trickle: true });
@@ -22,20 +27,21 @@ class WebRTCDialer {
           return;
         }
 
-        if (message.from !== address) {
+        let { from, to, signal } = JSON.parse(message.payload);
+
+        if (from !== address || to !== node.identity.address) {
           return;
         }
 
-        let signal = JSON.parse(message.payload);
         socket.signal(signal);
       };
 
       node.on('message', onMessage);
 
       socket.on('close', () => {
+        clearTimeout(dialTimeout);
         node.removeListener('message', onMessage);
         socket.removeAllListeners();
-        clearTimeout(dialTimeout);
         if (lastErr) {
           return reject(lastErr);
         }
@@ -44,10 +50,16 @@ class WebRTCDialer {
       });
 
       socket.on('signal', signal => {
-        node.relay({
-          to: address,
-          command: 'transport:webrtc:signal',
-          payload: signal,
+        this.signalers.map(signalerAddress => {
+          node.send({
+            to: signalerAddress,
+            command: 'transport:webrtc:signal',
+            payload: {
+              from: node.identity.address,
+              to: address,
+              signal,
+            },
+          });
         });
       });
 
@@ -58,9 +70,9 @@ class WebRTCDialer {
       });
 
       socket.on('connect', () => {
+        clearTimeout(dialTimeout);
         node.removeListener('message', onMessage);
         socket.removeAllListeners();
-        clearTimeout(dialTimeout);
         resolve(socket);
       });
     });

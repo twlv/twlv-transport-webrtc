@@ -3,11 +3,12 @@ const Socket = require('simple-peer');
 const debug = require('debug')('twlv:transport-webrtc:listener');
 
 class WebRTCListener extends EventEmitter {
-  constructor ({ wrtc } = {}) {
+  constructor ({ wrtc, signalers = [] } = {}) {
     super();
 
     this.proto = 'wrtc';
     this.wrtc = wrtc;
+    this.signalers = signalers;
 
     this._onMessage = this._onMessage.bind(this);
   }
@@ -16,15 +17,21 @@ class WebRTCListener extends EventEmitter {
   }
 
   up (node) {
+    if (!this.signalers || !this.signalers.length) {
+      throw new Error('WebRTCListener: Cannot listen without signaler');
+    }
+
     this._sockets = [];
     this.node = node;
     this.node.on('message', this._onMessage);
   }
 
   down () {
-    this.node.removeListener('message', this._onMessage);
-    this.node = undefined;
     this._sockets = [];
+    if (this.node) {
+      this.node.removeListener('message', this._onMessage);
+      this.node = undefined;
+    }
   }
 
   _onMessage (message) {
@@ -32,11 +39,13 @@ class WebRTCListener extends EventEmitter {
       return;
     }
 
-    let address = message.from;
-    let signal = JSON.parse(message.payload);
+    let { from, to, signal } = JSON.parse(message.payload);
+    if (to !== this.node.identity.address) {
+      return;
+    }
 
     if (signal.type !== 'offer') {
-      let socket = this._sockets.find(socket => socket.address === address);
+      let socket = this._sockets.find(socket => socket.address === from);
       if (!socket) {
         return;
       }
@@ -46,12 +55,18 @@ class WebRTCListener extends EventEmitter {
     }
 
     let socket = new Socket({ wrtc: this.wrtc, trickle: true });
-    socket.address = address;
+    socket.address = from;
     socket.on('signal', signal => {
-      this.node.relay({
-        to: address,
-        command: 'transport:webrtc:signal',
-        payload: signal,
+      this.signalers.map(signalerAddress => {
+        this.node.send({
+          to: signalerAddress,
+          command: 'transport:webrtc:signal',
+          payload: {
+            from: this.node.identity.address,
+            to: from,
+            signal,
+          },
+        });
       });
     });
 
@@ -60,7 +75,7 @@ class WebRTCListener extends EventEmitter {
     });
 
     socket.on('connect', () => {
-      let index = this._sockets.find(s => s.address === address);
+      let index = this._sockets.find(s => s.address === from);
       if (index !== -1) {
         this._sockets.splice(index, 1);
       }
