@@ -3,35 +3,62 @@ const Socket = require('simple-peer');
 const debug = require('debug')('twlv:transport-webrtc:listener');
 
 class WebRTCListener extends EventEmitter {
-  constructor ({ wrtc, signalers = [] } = {}) {
+  constructor ({ wrtc, trickle = true, signalers = [], timeout = 10000 } = {}) {
     super();
 
     this.proto = 'wrtc';
     this.wrtc = wrtc;
+    this.timeout = timeout;
     this.signalers = signalers;
+    this.trickle = trickle;
 
     this._onMessage = this._onMessage.bind(this);
   }
+
   get urls () {
     return [ `wrtc:${this.node.identity.address}` ];
   }
 
   up (node) {
-    if (!this.signalers || !this.signalers.length) {
-      throw new Error('WebRTCListener: Cannot listen without signaler');
-    }
-
-    this._sockets = [];
+    this.units = [];
     this.node = node;
     this.node.on('message', this._onMessage);
   }
 
   down () {
-    this._sockets = [];
+    this.units = [];
     if (this.node) {
       this.node.removeListener('message', this._onMessage);
       this.node = undefined;
     }
+  }
+
+  sendToSignalers (unit, signal) {
+    let message = {
+      command: 'transport:webrtc:signal',
+      payload: {
+        initiator: unit.address,
+        from: this.node.identity.address,
+        to: unit.address,
+        signal,
+      },
+    };
+
+    this.signalers.map(async signalerAddress => {
+      try {
+        this.node.send(Object.assign({ to: signalerAddress }, message));
+      } catch (err) {
+        // noop
+      }
+    });
+  }
+
+  getUnit (address) {
+    return this.units.find(unit => unit.address === address);
+  }
+
+  putUnit (unit) {
+    this.units.push(unit);
   }
 
   _onMessage (message) {
@@ -39,63 +66,96 @@ class WebRTCListener extends EventEmitter {
       return;
     }
 
-    let { from, to, signal } = JSON.parse(message.payload);
-    if (to !== this.node.identity.address) {
-      return;
-    }
+    try {
+      let payload = JSON.parse(message.payload);
+      let { initiator, from, to, signal } = payload;
+      let me = this.node.identity.address;
 
-    if (signal.type !== 'offer') {
-      let socket = this._sockets.find(socket => socket.address === from);
-      if (!socket) {
+      if (initiator === me || to !== me) {
         return;
       }
 
-      socket.signal(signal);
-      return;
+      debug('WebRTCDialer got signal signaler=%s %o', message.from, payload);
+
+      if (signal.type === 'offer') {
+        let unit = new ListenUnit({ listener: this, address: from });
+        this.putUnit(unit);
+        unit.signal(signal);
+        return;
+      }
+
+      let unit = this.getUnit(from);
+      if (!unit) {
+        return;
+      }
+
+      unit.signal(signal);
+    } catch (err) {
+      debug(`WebRTCListener caught error: ${err}`);
     }
+  }
+}
 
-    let socket = new Socket({ wrtc: this.wrtc, trickle: true });
-    socket.address = from;
-    socket.on('signal', signal => {
-      this.signalers.map(signalerAddress => {
-        this.node.send({
-          to: signalerAddress,
-          command: 'transport:webrtc:signal',
-          payload: {
-            from: this.node.identity.address,
-            to: from,
-            signal,
-          },
-        });
-      });
-    });
+class ListenUnit {
+  constructor ({ listener, address }) {
+    this.listener = listener;
+    this.address = address;
 
-    socket.on('error', err => {
-      debug(`WebRTCListener caught %s`, err.stack);
-    });
+    this.timeout = setTimeout(this._onTimeout.bind(this), this.listener.timeout);
 
-    socket.on('connect', () => {
-      let index = this._sockets.find(s => s.address === from);
-      if (index !== -1) {
-        this._sockets.splice(index, 1);
-      }
+    this.socket = new Socket({ wrtc: this.listener.wrtc, trickle: this.listener.trickle });
 
-      socket.removeAllListeners();
+    this.socket.on('signal', this._onSocketSignal.bind(this));
+    this.socket.on('error', this._onSocketError.bind(this));
+    this.socket.on('connect', this._onSocketConnect.bind(this));
+    this.socket.on('close', this._onSocketClose.bind(this));
+  }
 
-      this.emit('socket', socket);
-    });
+  signal (signal) {
+    this.socket.signal(signal);
+  }
 
-    socket.on('close', () => {
-      let index = this._sockets.indexOf(socket);
-      if (index !== -1) {
-        this._sockets.splice(index, 1);
-      }
-      socket.removeAllListeners();
-    });
+  _removeFromDialer () {
+    let index = this.listener.units.indexOf(this);
+    if (index !== -1) {
+      this.listener.units.splice(index, 1);
+    }
+  }
 
-    this._sockets.push(socket);
+  _onSocketSignal (signal) {
+    this.listener.sendToSignalers(this, signal);
+  }
 
-    socket.signal(signal);
+  _onSocketError (err) {
+    debug(`WebRTCListener caught: %s`, err.stack);
+  }
+
+  _onSocketConnect () {
+    debug('WebRTCListener: socket connected');
+
+    clearTimeout(this.timeout);
+    this._removeFromListener();
+    this.socket.removeAllListeners();
+
+    // TODO: if dont pause for a while, socket not registered correctly
+    this.listener.emit('socket', this.socket);
+  }
+
+  _onSocketClose () {
+    clearTimeout(this.timeout);
+    this._removeFromListener();
+    this.socket.removeAllListeners();
+  }
+
+  _removeFromListener () {
+    let index = this.listener.units.indexOf(this);
+    if (index !== -1) {
+      this.listener.units.splice(index, 1);
+    }
+  }
+
+  _onTimeout () {
+    this.socket.destroy(new Error('WebRTC Listen timeout'));
   }
 }
 

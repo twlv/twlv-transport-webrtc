@@ -3,8 +3,7 @@ const { MemoryFinder } = require('@twlv/core/finders/memory');
 const { MemoryDialer, MemoryListener } = require('@twlv/core/transports/memory');
 const { WebRTCDialer, WebRTCListener, WebRTCSignaler } = require('..');
 const assert = require('assert');
-// const wrtc = require('electron-webrtc')(); // TODO: electron wrtc leak?
-const wrtc = require('wrtc'); // TODO: node wrtc leak?
+const wrtc = require('wrtc');
 
 describe('WebRTC Transport', () => {
   before(() => process.on('unhandledRejection', err => console.error('Unhandled', err)));
@@ -31,13 +30,11 @@ describe('WebRTC Transport', () => {
       await node1.start();
       await node2.start();
 
-      try {
-        await node2.connect(`wrtc:${node1.identity.address}`);
-        throw new Error('Oops');
-      } catch (err) {
-        if (err.message !== 'WebRTC Dial timeout') {
-          throw err;
-        }
+      await node2.connect(`wrtc:${node1.identity.address}`);
+      throw new Error('Oops');
+    } catch (err) {
+      if (err.message !== 'WebRTC Dial timeout') {
+        throw err;
       }
     } finally {
       await node1.stop();
@@ -104,6 +101,8 @@ describe('WebRTC Transport', () => {
 
       await gw1.stop();
       // await gw2.stop();
+
+      await new Promise(resolve => setTimeout(resolve));
 
       await node1.stop();
       await node2.stop();
