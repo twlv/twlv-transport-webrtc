@@ -46,7 +46,7 @@ class WebRTCListener extends EventEmitter {
 
     this.signalers.map(async signalerAddress => {
       try {
-        this.node.send(Object.assign({ to: signalerAddress }, message));
+        await this.node.send(Object.assign({ to: signalerAddress }, message));
       } catch (err) {
         // noop
       }
