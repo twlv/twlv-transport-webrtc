@@ -12,6 +12,8 @@ class WebRTCListener extends EventEmitter {
     this.signalers = signalers;
     this.trickle = trickle;
 
+    this.sockets = [];
+
     this._onMessage = this._onMessage.bind(this);
   }
 
@@ -33,17 +35,7 @@ class WebRTCListener extends EventEmitter {
     }
   }
 
-  sendToSignalers (unit, signal) {
-    let message = {
-      command: 'transport:webrtc:signal',
-      payload: {
-        initiator: unit.address,
-        from: this.node.identity.address,
-        to: unit.address,
-        signal,
-      },
-    };
-
+  sendToSignalers (message) {
     this.signalers.map(async signalerAddress => {
       try {
         await this.node.send(Object.assign({ to: signalerAddress }, message));
@@ -68,14 +60,23 @@ class WebRTCListener extends EventEmitter {
 
     try {
       let payload = JSON.parse(message.payload);
-      let { initiator, from, to, signal } = payload;
+      let { initiator, from, to, renegotiate, signal } = payload;
       let me = this.node.identity.address;
 
       if (initiator === me || to !== me) {
         return;
       }
 
-      debug('WebRTCDialer got signal signaler=%s %o', message.from, payload);
+      if (renegotiate) {
+        let socket = this.sockets.find(socket => socket.twlvAddress === from);
+        if (socket) {
+          debug('WebRTCListener got renegotiate signal signaler=%s %o', message.from, payload);
+          socket.signal(signal);
+        }
+        return;
+      }
+
+      debug('WebRTCListener got signal signaler=%s %o', message.from, payload);
 
       if (signal.type === 'offer') {
         let unit = new ListenUnit({ listener: this, address: from });
@@ -93,6 +94,40 @@ class WebRTCListener extends EventEmitter {
     } catch (err) {
       debug(`WebRTCListener caught error: ${err}`);
     }
+  }
+
+  unitDone (unit) {
+    let { socket } = unit;
+
+    this.sockets.push(socket);
+
+    socket.on('close', () => {
+      let index = this.sockets.indexOf(socket);
+      if (index !== -1) {
+        this.sockets.splice(index, 1);
+      }
+    });
+
+    socket.on('signal', signal => {
+      console.log('listener socket got signal');
+      let message = {
+        command: 'transport:webrtc:signal',
+        payload: {
+          initiator: socket.twlvAddress,
+          from: this.node.identity.address,
+          to: socket.twlvAddress,
+          renegotiate: true,
+          signal,
+        },
+      };
+      this.sendToSignalers(message);
+    });
+
+    socket.on('error', err => {
+      console.error('listener got err', err.stack);
+    });
+
+    this.emit('socket', socket);
   }
 }
 
@@ -123,7 +158,16 @@ class ListenUnit {
   }
 
   _onSocketSignal (signal) {
-    this.listener.sendToSignalers(this, signal);
+    let message = {
+      command: 'transport:webrtc:signal',
+      payload: {
+        initiator: this.address,
+        from: this.listener.node.identity.address,
+        to: this.address,
+        signal,
+      },
+    };
+    this.listener.sendToSignalers(message);
   }
 
   _onSocketError (err) {
@@ -137,8 +181,10 @@ class ListenUnit {
     this._removeFromListener();
     this.socket.removeAllListeners();
 
+    this.socket.twlvAddress = this.address;
+
     // TODO: if dont pause for a while, socket not registered correctly
-    this.listener.emit('socket', this.socket);
+    this.listener.unitDone(this);
   }
 
   _onSocketClose () {

@@ -11,6 +11,7 @@ class WebRTCDialer {
     this.trickle = trickle;
 
     this.units = [];
+    this.sockets = [];
 
     this._onNodeMessage = this._onNodeMessage.bind(this);
   }
@@ -40,6 +41,34 @@ class WebRTCDialer {
       unit.add({ resolve, reject });
     });
 
+    this.sockets.push(socket);
+
+    socket.on('close', () => {
+      let index = this.sockets.indexOf(socket);
+      if (index !== -1) {
+        this.sockets.splice(index, 1);
+      }
+    });
+
+    socket.on('signal', signal => {
+      console.log('dialer socket got signal');
+      let message = {
+        command: 'transport:webrtc:signal',
+        payload: {
+          initiator: this.node.identity.address,
+          from: this.node.identity.address,
+          to: socket.twlvAddress,
+          renegotiate: true,
+          signal,
+        },
+      };
+      this.sendToSignalers(message);
+    });
+
+    socket.on('error', err => {
+      console.error('dialer got err', err.stack);
+    });
+
     return socket;
   }
 
@@ -56,17 +85,7 @@ class WebRTCDialer {
     this.node.on('message', this._onNodeMessage);
   }
 
-  sendToSignalers (unit, signal) {
-    let message = {
-      command: 'transport:webrtc:signal',
-      payload: {
-        initiator: this.node.identity.address,
-        from: this.node.identity.address,
-        to: unit.address,
-        signal,
-      },
-    };
-
+  sendToSignalers (message) {
     this.signalers.forEach(async signalerAddress => {
       try {
         await this.node.send(Object.assign({ to: signalerAddress }, message));
@@ -83,10 +102,19 @@ class WebRTCDialer {
 
     try {
       let payload = JSON.parse(message.payload);
-      let { initiator, from, to, signal } = payload;
+      let { initiator, from, to, signal, renegotiate } = payload;
       let me = this.node.identity.address;
 
       if (initiator !== me || to !== me) {
+        return;
+      }
+
+      if (renegotiate) {
+        let socket = this.sockets.find(socket => socket.twlvAddress === from);
+        if (socket) {
+          debug('WebRTCDialer got renegotiate signal signaler=%s %o', message.from, payload);
+          socket.signal(signal);
+        }
         return;
       }
 
@@ -119,7 +147,16 @@ class DialUnit {
   }
 
   _onSocketSignal (signal) {
-    this.dialer.sendToSignalers(this, signal);
+    let message = {
+      command: 'transport:webrtc:signal',
+      payload: {
+        initiator: this.dialer.node.identity.address,
+        from: this.dialer.node.identity.address,
+        to: this.address,
+        signal,
+      },
+    };
+    this.dialer.sendToSignalers(message);
   }
 
   _onSocketError (err) {
@@ -147,6 +184,9 @@ class DialUnit {
 
   _resolve (socket) {
     this._removeFromDialer();
+
+    this.socket.twlvAddress = this.address;
+
     this.handlers.forEach(({ resolve }) => resolve(this.socket));
   }
 

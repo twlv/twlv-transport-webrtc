@@ -1,6 +1,6 @@
 {
   "name": "@twlv/transport-webrtc",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "twlv webrtc dialer and listener",
   "main": "index.js",
   "repository": {
@@ -18,12 +18,12 @@
   "devDependencies": {
     "@twlv/core": "^0.2.11",
     "babel-eslint": "^8.2.6",
-    "eslint": "^5.3.0",
+    "eslint": "^5.4.0",
     "eslint-config-standard": "^11.0.0",
     "eslint-config-xinix": "^1.1.0",
     "eslint-plugin-import": "^2.14.0",
     "eslint-plugin-node": "^7.0.1",
-    "eslint-plugin-promise": "^3.8.0",
+    "eslint-plugin-promise": "^4.0.0",
     "eslint-plugin-standard": "^3.1.0",
     "husky": "^0.14.3",
     "mocha": "^5.2.0",
