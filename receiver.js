@@ -1,8 +1,8 @@
 const { EventEmitter } = require('events');
 const Socket = require('simple-peer');
-const debug = require('debug')('twlv:transport-webrtc:listener');
+const debug = require('debug')('twlv:transport-webrtc:receiver');
 
-class WebRTCListener extends EventEmitter {
+class WebRTCReceiver extends EventEmitter {
   constructor ({ wrtc, trickle = true, signalers = [], timeout = 10000 } = {}) {
     super();
 
@@ -70,16 +70,16 @@ class WebRTCListener extends EventEmitter {
       if (renegotiate) {
         let socket = this.sockets.find(socket => socket.twlvAddress === from);
         if (socket) {
-          debug('WebRTCListener got renegotiate signal signaler=%s %o', message.from, payload);
+          if (debug.enabled) debug('WebRTCReceiver got renegotiate signal signaler=%s %o', message.from, payload);
           socket.signal(signal);
         }
         return;
       }
 
-      debug('WebRTCListener got signal signaler=%s %o', message.from, payload);
+      if (debug.enabled) debug('WebRTCReceiver got signal signaler=%s %o', message.from, payload);
 
       if (signal.type === 'offer') {
-        let unit = new ListenUnit({ listener: this, address: from });
+        let unit = new ListenUnit({ receiver: this, address: from });
         this.putUnit(unit);
         unit.signal(signal);
         return;
@@ -92,7 +92,7 @@ class WebRTCListener extends EventEmitter {
 
       unit.signal(signal);
     } catch (err) {
-      debug(`WebRTCListener caught error: ${err}`);
+      if (debug.enabled) debug(`WebRTCReceiver caught error: ${err}`);
     }
   }
 
@@ -109,7 +109,6 @@ class WebRTCListener extends EventEmitter {
     });
 
     socket.on('signal', signal => {
-      console.log('listener socket got signal');
       let message = {
         command: 'transport:webrtc:signal',
         payload: {
@@ -124,7 +123,7 @@ class WebRTCListener extends EventEmitter {
     });
 
     socket.on('error', err => {
-      console.error('listener got err', err.stack);
+      if (debug.enabled) debug('Receiver socket caught:', err.stack);
     });
 
     this.emit('socket', socket);
@@ -132,13 +131,13 @@ class WebRTCListener extends EventEmitter {
 }
 
 class ListenUnit {
-  constructor ({ listener, address }) {
-    this.listener = listener;
+  constructor ({ receiver, address }) {
+    this.receiver = receiver;
     this.address = address;
 
-    this.timeout = setTimeout(this._onTimeout.bind(this), this.listener.timeout);
+    this.timeout = setTimeout(this._onTimeout.bind(this), this.receiver.timeout);
 
-    this.socket = new Socket({ wrtc: this.listener.wrtc, trickle: this.listener.trickle });
+    this.socket = new Socket({ wrtc: this.receiver.wrtc, trickle: this.receiver.trickle });
 
     this.socket.on('signal', this._onSocketSignal.bind(this));
     this.socket.on('error', this._onSocketError.bind(this));
@@ -151,9 +150,9 @@ class ListenUnit {
   }
 
   _removeFromDialer () {
-    let index = this.listener.units.indexOf(this);
+    let index = this.receiver.units.indexOf(this);
     if (index !== -1) {
-      this.listener.units.splice(index, 1);
+      this.receiver.units.splice(index, 1);
     }
   }
 
@@ -162,41 +161,41 @@ class ListenUnit {
       command: 'transport:webrtc:signal',
       payload: {
         initiator: this.address,
-        from: this.listener.node.identity.address,
+        from: this.receiver.node.identity.address,
         to: this.address,
         signal,
       },
     };
-    this.listener.sendToSignalers(message);
+    this.receiver.sendToSignalers(message);
   }
 
   _onSocketError (err) {
-    debug(`WebRTCListener caught: %s`, err.stack);
+    if (debug.enabled) debug(`WebRTCReceiver caught: %s`, err.stack);
   }
 
   _onSocketConnect () {
-    debug('WebRTCListener: socket connected');
+    if (debug.enabled) debug('WebRTCReceiver: socket connected');
 
     clearTimeout(this.timeout);
-    this._removeFromListener();
+    this._removeFromReceiver();
     this.socket.removeAllListeners();
 
     this.socket.twlvAddress = this.address;
 
     // TODO: if dont pause for a while, socket not registered correctly
-    this.listener.unitDone(this);
+    this.receiver.unitDone(this);
   }
 
   _onSocketClose () {
     clearTimeout(this.timeout);
-    this._removeFromListener();
+    this._removeFromReceiver();
     this.socket.removeAllListeners();
   }
 
-  _removeFromListener () {
-    let index = this.listener.units.indexOf(this);
+  _removeFromReceiver () {
+    let index = this.receiver.units.indexOf(this);
     if (index !== -1) {
-      this.listener.units.splice(index, 1);
+      this.receiver.units.splice(index, 1);
     }
   }
 
@@ -205,4 +204,4 @@ class ListenUnit {
   }
 }
 
-module.exports = { WebRTCListener };
+module.exports = { WebRTCReceiver };

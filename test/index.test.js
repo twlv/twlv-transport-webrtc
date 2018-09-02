@@ -1,7 +1,7 @@
 const { Node } = require('@twlv/core');
 const { MemoryFinder } = require('@twlv/core/finders/memory');
-const { MemoryDialer, MemoryListener } = require('@twlv/core/transports/memory');
-const { WebRTCDialer, WebRTCListener, WebRTCSignaler } = require('..');
+const { MemoryDialer, MemoryReceiver } = require('@twlv/core/transports/memory');
+const { WebRTCDialer, WebRTCReceiver, WebRTCSignaler } = require('..');
 const assert = require('assert');
 const wrtc = require('wrtc');
 
@@ -20,8 +20,8 @@ describe('WebRTC Transport', () => {
     node1.addDialer(new WebRTCDialer({ wrtc, signalers: [ gw.identity.address ], timeout: 500 }));
     node2.addDialer(new WebRTCDialer({ wrtc, signalers: [ gw.identity.address ], timeout: 500 }));
 
-    node1.addListener(new WebRTCListener({ wrtc, signalers: [ gw.identity.address ] }));
-    node2.addListener(new WebRTCListener({ wrtc, signalers: [ gw.identity.address ] }));
+    node1.addReceiver(new WebRTCReceiver({ wrtc, signalers: [ gw.identity.address ] }));
+    node2.addReceiver(new WebRTCReceiver({ wrtc, signalers: [ gw.identity.address ] }));
 
     node1.addDialer(new MemoryDialer());
     node2.addDialer(new MemoryDialer());
@@ -58,11 +58,11 @@ describe('WebRTC Transport', () => {
 
     node1.addDialer(new WebRTCDialer({ wrtc, signalers: [ gw1.identity.address ] }));
     node2.addDialer(new WebRTCDialer({ wrtc, signalers: [ gw1.identity.address ] }));
-    node1.addListener(new WebRTCListener({ wrtc, signalers: [ gw1.identity.address ] }));
-    node2.addListener(new WebRTCListener({ wrtc, signalers: [ gw1.identity.address ] }));
+    node1.addReceiver(new WebRTCReceiver({ wrtc, signalers: [ gw1.identity.address ] }));
+    node2.addReceiver(new WebRTCReceiver({ wrtc, signalers: [ gw1.identity.address ] }));
 
-    gw1.addListener(new MemoryListener());
-    // gw2.addListener(new MemoryListener());
+    gw1.addReceiver(new MemoryReceiver());
+    // gw2.addReceiver(new MemoryReceiver());
     node1.addDialer(new MemoryDialer());
     node2.addDialer(new MemoryDialer());
 
@@ -89,7 +89,6 @@ describe('WebRTC Transport', () => {
         assert.strictEqual(message.payload.toString(), 'bar');
       });
 
-      // console.log(node1.identity.address, 'to', node2.identity.address);
       await node1.send({
         to: node2.identity.address,
         command: 'foo',

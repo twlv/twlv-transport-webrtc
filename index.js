@@ -1,5 +1,5 @@
 const { WebRTCDialer } = require('./dialer');
-const { WebRTCListener } = require('./listener');
+const { WebRTCReceiver } = require('./receiver');
 const { WebRTCSignaler } = require('./signaler');
 
-module.exports = { WebRTCDialer, WebRTCListener, WebRTCSignaler };
+module.exports = { WebRTCDialer, WebRTCReceiver, WebRTCSignaler };

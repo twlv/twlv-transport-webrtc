@@ -16,17 +16,19 @@ class WebRTCDialer {
     this._onNodeMessage = this._onNodeMessage.bind(this);
   }
 
-  async dial (url, node) {
+  up (node) {
+    this.node = node;
+    this.node.on('message', this._onNodeMessage);
+  }
+
+  down () {
+    this.node.removeListener('message', this._onNodeMessage);
+    this.node = undefined;
+  }
+
+  async dial (url) {
     if (!this.signalers || !this.signalers.length) {
       throw new Error('WebRTCDialer: Cannot dial without signaler');
-    }
-
-    if (!this.node) {
-      this._initNodeListener(node);
-    }
-
-    if (this.node !== node) {
-      throw new Error('WebRTCDialer: Cannot use dialer for multi twlv nodes');
     }
 
     let address = url.split(':').pop();
@@ -51,7 +53,6 @@ class WebRTCDialer {
     });
 
     socket.on('signal', signal => {
-      console.log('dialer socket got signal');
       let message = {
         command: 'transport:webrtc:signal',
         payload: {
@@ -66,7 +67,7 @@ class WebRTCDialer {
     });
 
     socket.on('error', err => {
-      console.error('dialer got err', err.stack);
+      if (debug.enabled) debug('Dialer socket caught:', err.stack);
     });
 
     return socket;
@@ -78,11 +79,6 @@ class WebRTCDialer {
 
   putUnit (unit) {
     this.units.push(unit);
-  }
-
-  _initNodeListener (node) {
-    this.node = node;
-    this.node.on('message', this._onNodeMessage);
   }
 
   sendToSignalers (message) {
@@ -112,13 +108,13 @@ class WebRTCDialer {
       if (renegotiate) {
         let socket = this.sockets.find(socket => socket.twlvAddress === from);
         if (socket) {
-          debug('WebRTCDialer got renegotiate signal signaler=%s %o', message.from, payload);
+          if (debug.enabled) debug('WebRTCDialer got renegotiate signal signaler=%s %o', message.from, payload);
           socket.signal(signal);
         }
         return;
       }
 
-      debug('WebRTCDialer got signal signaler=%s %o', message.from, payload);
+      if (debug.enabled) debug('WebRTCDialer got signal signaler=%s %o', message.from, payload);
 
       let unit = this.getUnit(from);
       if (!unit) {
@@ -127,7 +123,7 @@ class WebRTCDialer {
 
       unit.signal(signal);
     } catch (err) {
-      debug('WebRTCDialer#_onNodeMessage caught err', err);
+      if (debug.enabled) debug('WebRTCDialer#_onNodeMessage caught err', err);
     }
   }
 }
@@ -161,11 +157,11 @@ class DialUnit {
 
   _onSocketError (err) {
     this.lastError = err;
-    debug(`WebRTCDialer caught %s`, err.stack);
+    if (debug.enabled) debug(`WebRTCDialer caught %s`, err.stack);
   }
 
   _onSocketConnect () {
-    debug('WebRTCDialer: socket connected');
+    if (debug.enabled) debug('WebRTCDialer: socket connected');
     clearTimeout(this.timeout);
     this.socket.removeAllListeners();
     this._resolve();
