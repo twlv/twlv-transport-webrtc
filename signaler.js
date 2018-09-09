@@ -2,18 +2,22 @@ class WebRTCSignaler {
   constructor (node) {
     this.node = node;
 
-    this._onMessage = this._onMessage.bind(this);
+    this._handler = {
+      test: 'transport:webrtc:signal',
+      handle: this._handle.bind(this),
+    };
+    // this._onMessage = this._onMessage.bind(this);
   }
 
   start () {
-    this.node.on('message', this._onMessage);
+    this.node.addHandler(this._handler);
   }
 
   stop () {
-    this.node.removeListener('message', this._onMessage);
+    this.node.removeHandler(this._handler);
   }
 
-  _onMessage (message) {
+  _handle (message) {
     if (message.command !== 'transport:webrtc:signal') {
       return;
     }
