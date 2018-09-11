@@ -44,15 +44,12 @@ describe('WebRTC Transport', () => {
 
   it('send to other peer via gateway', async () => {
     let gw1 = new Node();
-    // let gw2 = new Node();
     let node1 = new Node();
     let node2 = new Node();
 
-    let signaler1 = new WebRTCSignaler(gw1);
-    // let signaler2 = new WebRTCSignaler(gw2);
-
     gw1.addFinder(new MemoryFinder());
-    // gw2.addFinder(new MemoryFinder());
+    gw1.addHandler(new WebRTCSignaler());
+
     node1.addFinder(new MemoryFinder());
     node2.addFinder(new MemoryFinder());
 
@@ -62,23 +59,18 @@ describe('WebRTC Transport', () => {
     node2.addReceiver(new WebRTCReceiver({ wrtc, signalers: [ gw1.identity.address ] }));
 
     gw1.addReceiver(new MemoryReceiver());
-    // gw2.addReceiver(new MemoryReceiver());
+
     node1.addDialer(new MemoryDialer());
     node2.addDialer(new MemoryDialer());
 
     try {
       await gw1.start();
-      // await gw2.start();
+
       await node1.start();
       await node2.start();
 
-      await signaler1.start();
-      // await signaler2.start();
-
       await node1.connect(`memory:${gw1.identity.address}`);
       await node2.connect(`memory:${gw1.identity.address}`);
-      // // await node1.connect(`memory:${gw2.identity.address}`);
-      // // await node2.connect(`memory:${gw2.identity.address}`);
 
       node2.on('message', message => {
         if (message.command.startsWith('transport:webrtc')) {
@@ -95,11 +87,7 @@ describe('WebRTC Transport', () => {
         payload: 'bar',
       });
     } finally {
-      await signaler1.stop();
-      // await signaler2.stop();
-
       await gw1.stop();
-      // await gw2.stop();
 
       await new Promise(resolve => setTimeout(resolve));
 
