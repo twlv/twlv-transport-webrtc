@@ -88,9 +88,6 @@ describe('WebRTC Transport', () => {
       });
     } finally {
       await gw1.stop();
-
-      await new Promise(resolve => setTimeout(resolve, 300));
-
       await node1.stop();
       await node2.stop();
     }
